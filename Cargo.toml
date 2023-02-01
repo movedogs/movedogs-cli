@@ -1,0 +1,13 @@
+[package]
+name = "movedogs"
+authors = ["c0wjay <poppinjaewoo@gmail.com>"]
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.52"
+clap = { version = "3.1.8", features = ["derive"] }
+move-docgen = { git = "https://github.com/move-language/move", rev = "f976503ec92e6942eac1c05dd8231918d07e0af6" }
+move-package = { git = "https://github.com/move-language/move", rev = "f976503ec92e6942eac1c05dd8231918d07e0af6" }
