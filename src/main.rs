@@ -5,7 +5,7 @@ use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use move_docgen::DocgenOptions;
 use move_package::{BuildConfig, ModelConfig};
-use reqwest::blocking::Client;
+use reqwest::blocking::{multipart, Client};
 use std::{fs, io::Read, path::PathBuf};
 
 #[derive(Parser)]
@@ -161,7 +161,10 @@ impl Upload {
         let mut move_toml = fs::File::open("Move.toml")?;
         // TODO: show error message if Move.toml does not exist
 
+        // TODO: read git info.
+
         // TODO: iterate files in doc folder and concat them into one json format.
+        let form = multipart::Form::new();
 
         let mut contents = String::new();
         move_toml.read_to_string(&mut contents)?;
