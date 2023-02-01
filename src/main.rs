@@ -1,8 +1,12 @@
-use anyhow::Result;
+// need to be refactored after implement necessary features.
+// split to lib.rs, main.rs, docgen.rs, upload.rs, etc.
+
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use move_docgen::DocgenOptions;
 use move_package::{BuildConfig, ModelConfig};
-use std::{fs, path::PathBuf};
+use reqwest::blocking::Client;
+use std::{fs, io::Read, path::PathBuf};
 
 #[derive(Parser)]
 #[clap(name = "MoveDogs")]
@@ -28,6 +32,7 @@ pub struct Cli {
 pub enum Command {
     /// does testing things
     Docgen(Docgen),
+    Upload(Upload),
 }
 
 #[derive(Parser)]
@@ -146,6 +151,41 @@ impl Docgen {
     }
 }
 
+#[derive(Parser)]
+#[clap(name = "upload")]
+pub struct Upload {}
+impl Upload {
+    pub fn execute(self) -> Result<()> {
+        println!("Upload");
+        let paste_api = "https://paste.rs";
+        let mut move_toml = fs::File::open("Move.toml")?;
+
+        let mut contents = String::new();
+        move_toml.read_to_string(&mut contents)?;
+
+        let client = Client::new();
+        let response = client.post(paste_api).body(contents).send();
+        match response {
+            Ok(response) => {
+                if response.status().is_success() {
+                    println!(
+                        "Your package has been successfully uploaded {}.",
+                        response.text()?
+                    );
+                } else if response.status().is_client_error() {
+                    bail!("{}", response.text()?)
+                } else if response.status().is_server_error() {
+                    bail!("An unexpected error occurred. Please try again later");
+                }
+            }
+            Err(_) => {
+                bail!("An unexpected error occurred. Please try again later");
+            }
+        }
+        Ok(())
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -157,6 +197,7 @@ fn main() -> Result<()> {
     // matches just as you would the top level cmd
     match cli.command {
         Some(Command::Docgen(docgen)) => docgen.execute(cli.package_path, cli.build_config),
+        Some(Command::Upload(upload)) => upload.execute(),
         None => {
             // Docgen + Upload 한큐에 돌리기
             println!("No subcommand was used");

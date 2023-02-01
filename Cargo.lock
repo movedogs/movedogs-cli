@@ -1175,6 +1175,7 @@ dependencies = [
  "clap",
  "move-docgen",
  "move-package",
+ "reqwest",
 ]
 
 [[package]]
