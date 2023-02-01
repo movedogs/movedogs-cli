@@ -159,17 +159,21 @@ impl Upload {
         println!("Upload");
         let paste_api = "https://paste.rs";
         let mut move_toml = fs::File::open("Move.toml")?;
+        // TODO: show error message if Move.toml does not exist
+
+        // TODO: iterate files in doc folder and concat them into one json format.
 
         let mut contents = String::new();
         move_toml.read_to_string(&mut contents)?;
 
         let client = Client::new();
+        // TODO: post contents as json format
         let response = client.post(paste_api).body(contents).send();
         match response {
             Ok(response) => {
                 if response.status().is_success() {
                     println!(
-                        "Your package has been successfully uploaded {}.",
+                        "Your package has been successfully uploaded to {}.",
                         response.text()?
                     );
                 } else if response.status().is_client_error() {
@@ -199,7 +203,7 @@ fn main() -> Result<()> {
         Some(Command::Docgen(docgen)) => docgen.execute(cli.package_path, cli.build_config),
         Some(Command::Upload(upload)) => upload.execute(),
         None => {
-            // Docgen + Upload 한큐에 돌리기
+            // TODO: Docgen + Upload 한큐에 돌리기
             println!("No subcommand was used");
             Ok(())
         }
