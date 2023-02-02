@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use move_docgen::DocgenOptions;
 use move_package::{BuildConfig, ModelConfig};
 use reqwest::blocking::{multipart, Client};
-use std::{fs, io::Read, path::PathBuf, process::Command as ProcessCommand};
+use std::{collections::HashMap, fs, io::Read, path::PathBuf, process::Command as ProcessCommand};
 use toml::Parser as TomlParser;
 
 #[derive(Parser)]
@@ -159,6 +159,9 @@ impl Upload {
     pub fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
+        let mut map = HashMap::new();
+
+        let client = Client::new();
 
         // read github repository url from .git directory
         let mut output = ProcessCommand::new("git")
@@ -195,10 +198,9 @@ impl Upload {
         }
 
         println!("github_repo_url: {}", github_repo_url);
+        map.insert("github", github_repo_url.as_str());
 
-        let form = multipart::Form::new()
-            .text("git", "git info")
-            .text("toml", "toml info");
+        let form = multipart::Form::new();
         let mut part = multipart::Part::text("hello world");
 
         let move_toml = fs::read_to_string("Move.toml").expect("Unable to read Move.toml");
@@ -208,6 +210,7 @@ impl Upload {
         // Parsing Move.toml to get module info.
         let mut toml_parser = TomlParser::new(move_toml_str);
         let mut filename = String::new();
+
         match toml_parser.parse() {
             Some(value) => {
                 let package = value.get("package").unwrap();
@@ -220,7 +223,34 @@ impl Upload {
                     "name: {}, version: {}, address: {:#?}",
                     name, version, address
                 );
-                filename = format!("{}-{}.md", name, address);
+                filename = format!("{}+{}.md", name, address);
+
+                map.insert("name", name);
+                map.insert("address", address);
+                map.insert("version", version);
+                map.insert("license", "Apache-2.0"); // TODO: hard-coded; get license from Move.toml
+                map.insert("author", "MoveDOGs <dev@movedogs.org>"); // TODO: hard-coded; get author from Move.toml
+
+                // TODO: post metadata as json format to backend server.
+                let res = client.post(paste_api).json(&map).send();
+
+                match res {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            println!(
+                                "Your package has been successfully uploaded to {}.",
+                                response.text()?
+                            );
+                        } else if response.status().is_client_error() {
+                            bail!("{}", response.text()?)
+                        } else if response.status().is_server_error() {
+                            bail!("An unexpected error occurred. Please try again later");
+                        }
+                    }
+                    Err(_) => {
+                        bail!("An unexpected error occurred. Please try again later");
+                    }
+                }
             }
             None => {
                 println!("parse errors: {:?}", toml_parser.errors);
@@ -228,7 +258,7 @@ impl Upload {
         }
         println!("format: {}", filename);
 
-        // TODO: post metadata as json format to backend server.
+        // TODO: handle multiple file upload. (currently only last file is overwrited.)
         let paths = fs::read_dir("doc")?;
         for element in paths {
             let path = element.unwrap().path();
@@ -240,9 +270,8 @@ impl Upload {
                 }
             }
         }
-        let form = form.part("md", part);
+        let form = form.part("file", part);
 
-        let client = Client::new();
         // TODO: post contents as json format
         let response = client.post(paste_api).multipart(form).send();
         match response {
@@ -284,6 +313,4 @@ fn main() -> Result<()> {
             Ok(())
         }
     }
-
-    // Continued program logic goes here...
 }
