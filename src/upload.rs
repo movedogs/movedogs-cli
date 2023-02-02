@@ -6,12 +6,19 @@ use toml::Parser as TomlParser;
 
 #[derive(Parser)]
 #[clap(name = "upload")]
-pub struct Upload {}
+pub struct Upload {
+    #[clap(short = 'D', long = "description", value_name = "DESCRIPTION")]
+    description: Option<String>,
+}
 impl Upload {
     pub fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
+        let document_api = "http://localhost:3000/document";
+        let metadata_api = "http://localhost:3000/module";
+
         let mut map = HashMap::new();
+        let mut description = String::new();
 
         let client = Client::new();
 
@@ -86,8 +93,13 @@ impl Upload {
                 map.insert("license", license);
                 map.insert("author", authors[0].as_str().unwrap()); // TODO: only support first author; need to support multiple authors.
 
+                if let Some(message) = self.description {
+                    description = message;
+                    map.insert("description", description.as_str());
+                }
+
                 // TODO: change mock api to real server api
-                let res = client.post(paste_api).json(&map).send();
+                let res = client.post(metadata_api).json(&map).send();
 
                 match res {
                     Ok(response) => {
@@ -129,7 +141,7 @@ impl Upload {
 
         println!("content-type");
         // TODO: change mock api to real server api
-        let response = client.post(paste_api).multipart(form).send();
+        let response = client.post(document_api).multipart(form).send();
         match response {
             Ok(response) => {
                 if response.status().is_success() {
