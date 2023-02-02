@@ -241,7 +241,7 @@ dependencies = [
  "serde 1.0.152",
  "serde-hjson",
  "serde_json",
- "toml",
+ "toml 0.5.11",
  "yaml-rust",
 ]
 
@@ -1163,7 +1163,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
- "toml",
+ "toml 0.5.11",
  "walkdir",
  "whoami",
 ]
@@ -1186,6 +1186,7 @@ dependencies = [
  "move-docgen",
  "move-package",
  "reqwest",
+ "toml 0.2.1",
 ]
 
 [[package]]
@@ -1803,6 +1804,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
+name = "rustc-serialize"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
+
+[[package]]
 name = "ryu"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2155,6 +2162,15 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "toml"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "736b60249cb25337bc196faa43ee12c705e426f3d55c214d73a4e7be06f92cb4"
+dependencies = [
+ "rustc-serialize",
 ]
 
 [[package]]

@@ -6,7 +6,8 @@ use clap::{Parser, Subcommand};
 use move_docgen::DocgenOptions;
 use move_package::{BuildConfig, ModelConfig};
 use reqwest::blocking::{multipart, Client};
-use std::{fs, io::Read, path::PathBuf};
+use std::{fs, io::Read, path::PathBuf, process::Command as ProcessCommand};
+use toml::Parser as TomlParser;
 
 #[derive(Parser)]
 #[clap(name = "MoveDogs")]
@@ -158,20 +159,92 @@ impl Upload {
     pub fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
-        let mut move_toml = fs::File::open("Move.toml")?;
-        // TODO: show error message if Move.toml does not exist
 
-        // TODO: read git info.
+        // read github repository url from .git directory
+        let mut output = ProcessCommand::new("git")
+            .current_dir(".")
+            .args(["remote", "-v"])
+            .output()
+            .unwrap();
+        if !output.status.success() || output.stdout.is_empty() {
+            bail!("invalid git repository")
+        }
 
-        // TODO: iterate files in doc folder and concat them into one json format.
-        let form = multipart::Form::new();
+        let mut github_repo_url = String::new();
 
-        let mut contents = String::new();
-        move_toml.read_to_string(&mut contents)?;
+        let lines = String::from_utf8_lossy(output.stdout.as_slice());
+        let lines = lines.split('\n');
+        for line in lines {
+            if line.contains("github.com") {
+                let tokens: Vec<&str> = line.split(&['\t', ' '][..]).collect();
+                if tokens.len() != 3 {
+                    bail!("invalid remote url")
+                }
+                // convert ssh url to https
+                let https_url = if tokens[1].starts_with("git@github.com") {
+                    tokens[1].replace(':', "/").replace("git@", "https://")
+                } else {
+                    String::from(tokens[1])
+                };
+                github_repo_url = if https_url.ends_with(".git") {
+                    https_url[..https_url.len() - 4].to_string()
+                } else {
+                    https_url
+                };
+            }
+        }
+
+        println!("github_repo_url: {}", github_repo_url);
+
+        let form = multipart::Form::new()
+            .text("git", "git info")
+            .text("toml", "toml info");
+        let mut part = multipart::Part::text("hello world");
+
+        let move_toml = fs::read_to_string("Move.toml").expect("Unable to read Move.toml");
+        let move_toml_str = move_toml.as_str();
+        // TODO: show error message & break if Move.toml does not exist
+
+        // Parsing Move.toml to get module info.
+        let mut toml_parser = TomlParser::new(move_toml_str);
+        let mut filename = String::new();
+        match toml_parser.parse() {
+            Some(value) => {
+                let package = value.get("package").unwrap();
+                let name = package.lookup("name").unwrap().as_str().unwrap();
+                let version = package.lookup("version").unwrap().as_str().unwrap();
+                let addresses = value.get("addresses").unwrap();
+                // TODO: key-value lookup 하는 부분 하드코딩되어있음.
+                let address = addresses.lookup("std").unwrap().as_str().unwrap();
+                println!(
+                    "name: {}, version: {}, address: {:#?}",
+                    name, version, address
+                );
+                filename = format!("{}-{}.md", name, address);
+            }
+            None => {
+                println!("parse errors: {:?}", toml_parser.errors);
+            }
+        }
+        println!("format: {}", filename);
+
+        // TODO: post metadata as json format to backend server.
+        let paths = fs::read_dir("doc")?;
+        for element in paths {
+            let path = element.unwrap().path();
+            if let Some(extension) = path.extension() {
+                if extension == "md" {
+                    println!("{:?}", path);
+                    let mut md_file = fs::File::open(path)?;
+                    part = multipart::Part::reader(md_file).file_name(filename.clone());
+                }
+            }
+        }
+        let form = form.part("md", part);
 
         let client = Client::new();
         // TODO: post contents as json format
-        let response = client.post(paste_api).body(contents).send();
+        let response = client.post(paste_api).multipart(form).send();
         match response {
             Ok(response) => {
                 if response.status().is_success() {
