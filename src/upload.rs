@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use reqwest::blocking::{multipart, Client};
-use std::{collections::HashMap, fs, fs::File, process::Command as ProcessCommand};
+use std::{collections::HashMap, fs, path::PathBuf, process::Command as ProcessCommand};
 use toml::Parser as TomlParser;
 
 #[derive(Parser)]
@@ -15,8 +15,8 @@ impl Upload {
     pub fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
-        let document_api = "http://localhost:4200/document";
-        let metadata_api = "http://localhost:4200/module";
+        // let document_api = "http://localhost:4200/document";
+        // let metadata_api = "http://localhost:4200/module";
 
         let mut map = HashMap::new();
         let mut description = String::new();
@@ -24,7 +24,7 @@ impl Upload {
         let client = Client::new();
 
         // read github repository url from .git directory
-        let mut output = ProcessCommand::new("git")
+        let output = ProcessCommand::new("git")
             .current_dir(".")
             .args(["remote", "-v"])
             .output()
@@ -60,8 +60,8 @@ impl Upload {
         println!("github_repo_url: {}", github_repo_url);
         map.insert("github", github_repo_url.as_str());
 
-        let form = multipart::Form::new();
-        let mut part = multipart::Part::text("hello world");
+        let mut form = multipart::Form::new();
+        let mut part: multipart::Part;
 
         let move_toml = fs::read_to_string("Move.toml").expect("Unable to read Move.toml");
         let move_toml_str = move_toml.as_str();
@@ -86,7 +86,7 @@ impl Upload {
                     "name: {}, version: {}, address: {:#?}",
                     package_name, version, address
                 );
-                filename = format!("{}+{}.md", package_name, address);
+                filename = package_name.to_string();
 
                 map.insert("name", package_name);
                 map.insert("address", address);
@@ -100,7 +100,7 @@ impl Upload {
                 }
 
                 // TODO: change mock api to real server api (metadata_api)
-                let res = client.post(metadata_api).json(&map).send();
+                let res = client.post(paste_api).json(&map).send();
 
                 match res {
                     Ok(response) => {
@@ -126,26 +126,25 @@ impl Upload {
         }
         println!("format: {}", filename);
 
-        // TODO: handle multiple file upload. (currently only last file is overwrited.)
+        // upload md files from /doc directory.
         let paths = fs::read_dir("doc")?;
         for element in paths {
             let path = element.unwrap().path();
             if let Some(extension) = path.extension() {
                 if extension == "md" {
                     println!("{:?}", path);
-                    let filename_of_module = filename.clone();
-                    let mut md_file = fs::read_to_string(path)?;
-                    // let mut md_file = fs::File::open(path)?;
-                    // TODO: Add parsing md_file logic to get module name.
-                    part = multipart::Part::text(md_file).file_name(filename_of_module.clone());
+                    let mut filename_of_module = filename.clone();
+                    let md_file =
+                        Self::read_file_and_module_name(&mut filename_of_module, &path).unwrap();
+                    part = multipart::Part::text(md_file).file_name(filename_of_module);
+                    form = form.part("file", part);
                 }
             }
         }
-        let form = form.part("file", part);
 
         println!("content-type");
         // TODO: change mock api to real server api (document_api)
-        let response = client.post(document_api).multipart(form).send();
+        let response = client.post(paste_api).multipart(form).send();
         match response {
             Ok(response) => {
                 if response.status().is_success() {
@@ -166,18 +165,25 @@ impl Upload {
         Ok(())
     }
 
-    // fn get_module_name(&self, path: &Path) -> Result<String> {
-    //     let mut file = fs::File::open(path)?;
-    //     let mut contents = String::new();
-    //     file.read_to_string(&mut contents)?;
-    //     let mut module_name = String::new();
-    //     let lines = contents.lines();
-    //     for line in lines {
-    //         if line.starts_with("#") {
-    //             module_name = line[1..].trim().to_string();
-    //             break;
-    //         }
-    //     }
-    //     Ok(module_name)
-    // }
+    fn read_file_and_module_name(filename: &mut String, path: &PathBuf) -> Result<String> {
+        let md_file = fs::read_to_string(path).expect("Unable to read md file");
+        let lines = md_file.split("\n");
+        // parse md_file to get module name.
+        for line in lines {
+            if line.starts_with("# Module") {
+                let tokens = line.split("`");
+                for token in tokens {
+                    if token.contains("::") {
+                        let module_name = token.split("::").last().unwrap();
+                        println!("line: {}", module_name);
+                        filename.push_str("+");
+                        filename.push_str(module_name);
+                        filename.push_str(".md");
+                    }
+                }
+                break;
+            }
+        }
+        Ok(md_file)
+    }
 }
