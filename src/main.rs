@@ -31,8 +31,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// does testing things
+    /// generate document files (*.md) in /doc directory from move source files in /sources directory.
     Docgen(Docgen),
+    /// upload document files (*.md) stored in /doc directory to movedogs server.
     Upload(Upload),
 }
 

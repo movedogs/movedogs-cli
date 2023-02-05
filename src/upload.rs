@@ -1,12 +1,13 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use reqwest::blocking::{multipart, Client};
-use std::{collections::HashMap, fs, process::Command as ProcessCommand};
+use std::{collections::HashMap, fs, fs::File, process::Command as ProcessCommand};
 use toml::Parser as TomlParser;
 
 #[derive(Parser)]
 #[clap(name = "upload")]
 pub struct Upload {
+    /// Add short description about the module.
     #[clap(short = 'D', long = "description", value_name = "DESCRIPTION")]
     description: Option<String>,
 }
@@ -14,8 +15,8 @@ impl Upload {
     pub fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
-        let document_api = "http://localhost:3000/document";
-        let metadata_api = "http://localhost:3000/module";
+        let document_api = "http://localhost:4200/document";
+        let metadata_api = "http://localhost:4200/module";
 
         let mut map = HashMap::new();
         let mut description = String::new();
@@ -73,21 +74,21 @@ impl Upload {
         match toml_parser.parse() {
             Some(value) => {
                 let package = value.get("package").unwrap();
-                let name = package.lookup("name").unwrap().as_str().unwrap();
+                let package_name = package.lookup("name").unwrap().as_str().unwrap();
                 let version = package.lookup("version").unwrap().as_str().unwrap();
                 let license = package.lookup("license").unwrap().as_str().unwrap();
                 let authors = package.lookup("authors").unwrap().as_slice().unwrap();
                 println!("authors: {:?}", authors);
                 let addresses = value.get("addresses").unwrap();
-                // TODO: key-value lookup 하는 부분 하드코딩되어있음.
+                // TODO: key-value lookup 하는 부분 하드코딩되어있음. -> addresses 메타데이터 넘겨줄 필요 x
                 let address = addresses.lookup("std").unwrap().as_str().unwrap();
                 println!(
                     "name: {}, version: {}, address: {:#?}",
-                    name, version, address
+                    package_name, version, address
                 );
-                filename = format!("{}+{}.md", name, address);
+                filename = format!("{}+{}.md", package_name, address);
 
-                map.insert("name", name);
+                map.insert("name", package_name);
                 map.insert("address", address);
                 map.insert("version", version);
                 map.insert("license", license);
@@ -98,7 +99,7 @@ impl Upload {
                     map.insert("description", description.as_str());
                 }
 
-                // TODO: change mock api to real server api
+                // TODO: change mock api to real server api (metadata_api)
                 let res = client.post(metadata_api).json(&map).send();
 
                 match res {
@@ -132,15 +133,18 @@ impl Upload {
             if let Some(extension) = path.extension() {
                 if extension == "md" {
                     println!("{:?}", path);
-                    let mut md_file = fs::File::open(path)?;
-                    part = multipart::Part::reader(md_file).file_name(filename.clone());
+                    let filename_of_module = filename.clone();
+                    let mut md_file = fs::read_to_string(path)?;
+                    // let mut md_file = fs::File::open(path)?;
+                    // TODO: Add parsing md_file logic to get module name.
+                    part = multipart::Part::text(md_file).file_name(filename_of_module.clone());
                 }
             }
         }
         let form = form.part("file", part);
 
         println!("content-type");
-        // TODO: change mock api to real server api
+        // TODO: change mock api to real server api (document_api)
         let response = client.post(document_api).multipart(form).send();
         match response {
             Ok(response) => {
@@ -161,4 +165,19 @@ impl Upload {
         }
         Ok(())
     }
+
+    // fn get_module_name(&self, path: &Path) -> Result<String> {
+    //     let mut file = fs::File::open(path)?;
+    //     let mut contents = String::new();
+    //     file.read_to_string(&mut contents)?;
+    //     let mut module_name = String::new();
+    //     let lines = contents.lines();
+    //     for line in lines {
+    //         if line.starts_with("#") {
+    //             module_name = line[1..].trim().to_string();
+    //             break;
+    //         }
+    //     }
+    //     Ok(module_name)
+    // }
 }
