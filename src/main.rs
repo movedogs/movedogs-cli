@@ -1,10 +1,17 @@
+#![forbid(unsafe_code)]
+
+#[cfg(unix)]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use move_package::BuildConfig;
+// use move_package::BuildConfig;
 use std::path::PathBuf;
+use std::process::exit;
 
 mod docgen;
-use docgen::Docgen;
+use docgen::DocumentPackage;
 
 mod upload;
 use upload::Upload;
@@ -18,41 +25,41 @@ use upload::Upload;
     long_about = "CLI Documentation application for move language, corresponding to docs.rs or crates.io in Rust."
 )]
 pub struct Cli {
-    /// Sets a custom config file
-    #[clap(short = 'p', long = "path", value_name = "FILE_PATH", global = true)]
-    package_path: Option<PathBuf>,
-
-    #[clap(flatten)]
-    build_config: BuildConfig,
-
+    /// generate document files (*.md) in /doc directory from move source files in /sources directory.
     #[clap(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
     /// generate document files (*.md) in /doc directory from move source files in /sources directory.
-    Docgen(Docgen),
+    Docgen(DocumentPackage),
     /// upload document files (*.md) stored in /doc directory to movedogs server.
     Upload(Upload),
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-
-    if let Some(config_path) = cli.package_path.as_deref() {
-        println!("Value for config: {}", config_path.display());
+impl Cli {
+    pub async fn execute(self) -> Result<()> {
+        use crate::Command::{Docgen, Upload};
+        match self.command {
+            Docgen(docgen) => docgen.execute().await,
+            Upload(upload) => upload.execute().await,
+        }
     }
+}
+
+#[tokio::main]
+async fn main() {
+    let cli = Cli::parse();
+    let result = cli.execute().await;
 
     // You can check for the existence of subcommands, and if found use their
     // matches just as you would the top level cmd
-    match cli.command {
-        Some(Command::Docgen(docgen)) => docgen.execute(cli.package_path, cli.build_config),
-        Some(Command::Upload(upload)) => upload.execute(),
-        None => {
-            // TODO: Docgen + Upload 한큐에 돌리기
-            println!("No subcommand was used");
-            Ok(())
+    match result {
+        Ok(_) => println!("Success"),
+        Err(inner) => {
+            println!("{}", inner);
+            exit(1);
         }
     }
 }

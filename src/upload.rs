@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::Parser;
-use reqwest::blocking::{multipart, Client};
+use reqwest::{multipart, Client};
 use std::{collections::HashMap, fs, path::PathBuf, process::Command as ProcessCommand};
 use toml::Parser as TomlParser;
 
@@ -12,7 +12,7 @@ pub struct Upload {
     description: Option<String>,
 }
 impl Upload {
-    pub fn execute(self) -> Result<()> {
+    pub async fn execute(self) -> Result<()> {
         println!("Upload");
         let paste_api = "https://paste.rs";
         // let document_api = "http://localhost:4200/document";
@@ -68,7 +68,6 @@ impl Upload {
 
         let move_toml = fs::read_to_string("Move.toml").expect("Unable to read Move.toml");
         let move_toml_str = move_toml.as_str();
-        // TODO: show error message & break if Move.toml does not exist
 
         // Parsing Move.toml to get module info.
         let mut toml_parser = TomlParser::new(move_toml_str);
@@ -76,44 +75,68 @@ impl Upload {
 
         match toml_parser.parse() {
             Some(value) => {
-                let package = value.get("package").unwrap();
-                let package_name = package.lookup("name").unwrap().as_str().unwrap();
-                let version = package.lookup("version").unwrap().as_str().unwrap();
-                let license = package.lookup("license").unwrap().as_str().unwrap();
-                let authors = package.lookup("authors").unwrap().as_slice().unwrap();
-                println!("authors: {:?}", authors);
-                let addresses = value.get("addresses").unwrap();
-                // TODO: key-value lookup 하는 부분 하드코딩되어있음. -> addresses 메타데이터 넘겨줄 필요 x
-                let address = addresses.lookup("std").unwrap().as_str().unwrap();
-                println!(
-                    "name: {}, version: {}, address: {:#?}",
-                    package_name, version, address
-                );
-                filename = package_name.to_string();
+                let package = value.get("package");
+                if package.is_none() {
+                    bail!("package is not defined in Move.toml")
+                }
+                let package = package.unwrap();
 
-                map.insert("name", package_name);
-                map.insert("address", address);
-                map.insert("version", version);
-                map.insert("license", license);
-                map.insert("author", authors[0].as_str().unwrap()); // TODO: only support first author; need to support multiple authors.
+                let package_name = package.lookup("name");
+                if let Some(package_name) = package_name {
+                    println!("package_name: {:?}", package_name);
+                    let package_name = package_name.as_str().unwrap_or_default();
+                    map.insert("name", package_name);
+                    filename = package_name.to_string();
+                } else {
+                    bail!("package name is not defined in Move.toml")
+                }
+
+                let version = package.lookup("version");
+                if let Some(version) = version {
+                    println!("version: {:?}", version);
+                    let version = version.as_str().unwrap_or_default();
+                    map.insert("version", version);
+                } else {
+                    bail!("package version is not defined in Move.toml")
+                }
+
+                let license = package.lookup("license");
+                if let Some(license) = license {
+                    println!("license: {:?}", license);
+                    let license = license.as_str().unwrap_or_default();
+                    map.insert("license", license);
+                } else {
+                    map.insert("license", "");
+                }
+
+                let authors = package.lookup("authors");
+                if let Some(authors) = authors {
+                    println!("authors: {:?}", authors);
+                    let authors = authors.as_slice().unwrap_or_default();
+                    map.insert("author", authors[0].as_str().unwrap()); // TODO: only support first author; need to support multiple authors.
+                } else {
+                    map.insert("author", "");
+                }
 
                 if let Some(message) = self.description {
                     description = message;
                     map.insert("description", description.as_str());
+                } else {
+                    map.insert("description", "");
                 }
 
                 // TODO: change mock api to real server api (metadata_api)
-                let res = client.post(paste_api).json(&map).send();
+                let res = client.post(paste_api).json(&map).send().await;
 
                 match res {
                     Ok(response) => {
                         if response.status().is_success() {
                             println!(
                                 "Your package has been successfully uploaded to {}.",
-                                response.text()?
+                                response.text().await?
                             );
                         } else if response.status().is_client_error() {
-                            bail!("{}", response.text()?)
+                            bail!("{}", response.text().await?)
                         } else if response.status().is_server_error() {
                             bail!("An unexpected error occurred. Please try again later");
                         }
@@ -147,16 +170,16 @@ impl Upload {
 
         println!("content-type");
         // TODO: change mock api to real server api (document_api)
-        let response = client.post(paste_api).multipart(form).send();
+        let response = client.post(paste_api).multipart(form).send().await;
         match response {
             Ok(response) => {
                 if response.status().is_success() {
                     println!(
                         "Your package has been successfully uploaded to {}.",
-                        response.text()?
+                        response.text().await?
                     );
                 } else if response.status().is_client_error() {
-                    bail!("{}", response.text()?)
+                    bail!("{}", response.text().await?)
                 } else if response.status().is_server_error() {
                     bail!("An unexpected error occurred. Please try again later");
                 }
