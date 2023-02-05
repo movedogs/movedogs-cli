@@ -45,7 +45,10 @@ impl Upload {
                 }
                 // convert ssh url to https
                 let https_url = if tokens[1].starts_with("git@github.com") {
-                    tokens[1].replace(':', "/").replace("git@", "https://")
+                    let mut token: Vec<&str> = tokens[1].split(":").collect();
+                    token[0] = "https://github.com/";
+                    token.join("")
+                    // tokens[1].replace(':', "/").replace("git@", "https://")
                 } else {
                     String::from(tokens[1])
                 };
