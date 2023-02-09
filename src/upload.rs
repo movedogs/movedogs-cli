@@ -114,9 +114,9 @@ impl Upload {
             println!("authors: {:?}", authors);
             let author = authors.as_array().unwrap();
             stringfied_author = serde_json::to_string(&author).unwrap();
-            map.insert("author", stringfied_author.as_str());
+            map.insert("authors", stringfied_author.as_str());
         } else {
-            map.insert("author", "[\"\"]");
+            map.insert("authors", "[\"\"]");
         }
 
         if let Some(message) = self.description {
