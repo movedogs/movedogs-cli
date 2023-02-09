@@ -1,8 +1,9 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use reqwest::{multipart, Client};
+use serde_json;
 use std::{collections::HashMap, fs, path::PathBuf, process::Command as ProcessCommand};
-use toml::Parser as TomlParser;
+use toml::Table;
 
 #[derive(Parser)]
 #[clap(name = "upload")]
@@ -14,9 +15,9 @@ pub struct Upload {
 impl Upload {
     pub async fn execute(self) -> Result<()> {
         println!("Upload");
-        let paste_api = "https://paste.rs";
-        // let document_api = "http://localhost:4200/document";
-        // let metadata_api = "http://localhost:4200/module";
+        // let paste_api = "https://paste.rs";
+        let document_api = "https://api.movedogs.org/document";
+        let metadata_api = "https://api.movedogs.org/module";
 
         let mut map = HashMap::new();
         let mut description = String::new();
@@ -70,84 +71,79 @@ impl Upload {
         let move_toml_str = move_toml.as_str();
 
         // Parsing Move.toml to get module info.
-        let mut toml_parser = TomlParser::new(move_toml_str);
+        let mut toml_parser = move_toml_str.parse::<Table>().unwrap();
         let mut filename = String::new();
 
-        match toml_parser.parse() {
-            Some(value) => {
-                let package = value.get("package");
-                if package.is_none() {
-                    bail!("package is not defined in Move.toml")
-                }
-                let package = package.unwrap();
+        let package = toml_parser.get("package");
+        if package.is_none() {
+            bail!("package is not defined in Move.toml")
+        }
+        let package = package.unwrap();
 
-                let package_name = package.lookup("name");
-                if let Some(package_name) = package_name {
-                    println!("package_name: {:?}", package_name);
-                    let package_name = package_name.as_str().unwrap_or_default();
-                    map.insert("name", package_name);
-                    filename = package_name.to_string();
-                } else {
-                    bail!("package name is not defined in Move.toml")
-                }
+        let package_name = package.get("name");
+        if let Some(package_name) = package_name {
+            println!("package_name: {:?}", package_name);
+            let package_name = package_name.as_str().unwrap_or_default();
+            map.insert("name", package_name);
+            filename = package_name.to_string();
+        } else {
+            bail!("package name is not defined in Move.toml")
+        }
 
-                let version = package.lookup("version");
-                if let Some(version) = version {
-                    println!("version: {:?}", version);
-                    let version = version.as_str().unwrap_or_default();
-                    map.insert("version", version);
-                } else {
-                    bail!("package version is not defined in Move.toml")
-                }
+        let version = package.get("version");
+        if let Some(version) = version {
+            println!("version: {:?}", version);
+            let version = version.as_str().unwrap_or_default();
+            map.insert("version", version);
+        } else {
+            bail!("package version is not defined in Move.toml")
+        }
 
-                let license = package.lookup("license");
-                if let Some(license) = license {
-                    println!("license: {:?}", license);
-                    let license = license.as_str().unwrap_or_default();
-                    map.insert("license", license);
-                } else {
-                    map.insert("license", "");
-                }
+        let license = package.get("license");
+        if let Some(license) = license {
+            println!("license: {:?}", license);
+            let license = license.as_str().unwrap_or_default();
+            map.insert("license", license);
+        } else {
+            map.insert("license", "");
+        }
 
-                let authors = package.lookup("authors");
-                if let Some(authors) = authors {
-                    println!("authors: {:?}", authors);
-                    let authors = authors.as_slice().unwrap_or_default();
-                    map.insert("author", authors[0].as_str().unwrap()); // TODO: only support first author; need to support multiple authors.
-                } else {
-                    map.insert("author", "");
-                }
+        let authors = package.get("authors");
+        let mut stringfied_author = String::new();
+        if let Some(authors) = authors {
+            println!("authors: {:?}", authors);
+            let author = authors.as_array().unwrap();
+            stringfied_author = serde_json::to_string(&author).unwrap();
+            map.insert("author", stringfied_author.as_str());
+        } else {
+            map.insert("author", "[\"\"]");
+        }
 
-                if let Some(message) = self.description {
-                    description = message;
-                    map.insert("description", description.as_str());
-                } else {
-                    map.insert("description", "");
-                }
+        if let Some(message) = self.description {
+            description = message;
+            map.insert("description", description.as_str());
+        } else {
+            map.insert("description", "");
+        }
 
-                // TODO: change mock api to real server api (metadata_api)
-                let res = client.post(paste_api).json(&map).send().await;
+        
+        let res = client.post(metadata_api).json(&map).send().await;
 
-                match res {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            println!(
-                                "Your package has been successfully uploaded to {}.",
-                                response.text().await?
-                            );
-                        } else if response.status().is_client_error() {
-                            bail!("{}", response.text().await?)
-                        } else if response.status().is_server_error() {
-                            bail!("An unexpected error occurred. Please try again later");
-                        }
-                    }
-                    Err(_) => {
-                        bail!("An unexpected error occurred. Please try again later");
-                    }
+        match res {
+            Ok(response) => {
+                if response.status().is_success() {
+                    println!(
+                        "Your package has been successfully uploaded to {}.",
+                        response.text().await?
+                    );
+                } else if response.status().is_client_error() {
+                    bail!("{}", response.text().await?)
+                } else if response.status().is_server_error() {
+                    bail!("An unexpected error occurred. Please try again later");
                 }
             }
-            None => {
-                println!("parse errors: {:?}", toml_parser.errors);
+            Err(_) => {
+                bail!("An unexpected error occurred. Please try again later");
             }
         }
         println!("format: {}", filename);
@@ -169,8 +165,8 @@ impl Upload {
         }
 
         println!("content-type");
-        // TODO: change mock api to real server api (document_api)
-        let response = client.post(paste_api).multipart(form).send().await;
+        
+        let response = client.post(document_api).multipart(form).send().await;
         match response {
             Ok(response) => {
                 if response.status().is_success() {
