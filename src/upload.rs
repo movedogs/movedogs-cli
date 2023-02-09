@@ -126,7 +126,6 @@ impl Upload {
             map.insert("description", "");
         }
 
-        
         let res = client.post(metadata_api).json(&map).send().await;
 
         match res {
@@ -159,13 +158,13 @@ impl Upload {
                     let md_file =
                         Self::read_file_and_module_name(&mut filename_of_module, &path).unwrap();
                     part = multipart::Part::text(md_file).file_name(filename_of_module);
-                    form = form.part("file", part);
+                    form = form.part("files", part);
                 }
             }
         }
 
         println!("content-type");
-        
+
         let response = client.post(document_api).multipart(form).send().await;
         match response {
             Ok(response) => {
