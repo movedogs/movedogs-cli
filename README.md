@@ -1,3 +1,5 @@
+<img src="https://user-images.githubusercontent.com/96561121/217781843-e66f4963-0ebc-4766-8429-c7a40e7ccc10.png" width="100" height="100">
+
 # [MoveDogs](https://www.movedogs.org/)
 
 This is the CLI Documentation Application for Move Language. This tool provides a simple and efficient way to generate and upload documentation for your projects. Similar to docs.rs or crates.io in Rust, our tool allows you to use the `movedogs docgen` command to automatically generate documentation from the comments in your source code. You can then use the `movedogs upload` command to upload the generated documentation to our web server. You can see uploaded documents in [our website](https://www.movedogs.org/).
