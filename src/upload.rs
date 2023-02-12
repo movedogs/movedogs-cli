@@ -84,7 +84,7 @@ impl Upload {
         if let Some(package_name) = package_name {
             println!("package_name: {:?}", package_name);
             let package_name = package_name.as_str().unwrap_or_default();
-            map.insert("name", package_name);
+            map.insert("packageName", package_name);
             filename = package_name.to_string();
         } else {
             bail!("package name is not defined in Move.toml")
@@ -126,28 +126,10 @@ impl Upload {
             map.insert("description", "");
         }
 
-        let res = client.post(metadata_api).json(&map).send().await;
-
-        match res {
-            Ok(response) => {
-                if response.status().is_success() {
-                    println!(
-                        "Your package has been successfully uploaded to {}.",
-                        response.text().await?
-                    );
-                } else if response.status().is_client_error() {
-                    bail!("{}", response.text().await?)
-                } else if response.status().is_server_error() {
-                    bail!("An unexpected error occurred. Please try again later");
-                }
-            }
-            Err(_) => {
-                bail!("An unexpected error occurred. Please try again later");
-            }
-        }
         println!("format: {}", filename);
 
         // upload md files from /doc directory.
+        let mut module_name_vec: Vec<String> = Vec::new();
         let paths = fs::read_dir("doc")?;
         for element in paths {
             let path = element.unwrap().path();
@@ -155,10 +137,44 @@ impl Upload {
                 if extension == "md" {
                     println!("{:?}", path);
                     let mut filename_of_module = filename.clone();
-                    let md_file =
-                        Self::read_file_and_module_name(&mut filename_of_module, &path).unwrap();
+                    let md_file = Self::read_file_and_module_name(
+                        &mut filename_of_module,
+                        &mut module_name_vec,
+                        &path,
+                    )
+                    .unwrap();
                     part = multipart::Part::text(md_file).file_name(filename_of_module);
                     form = form.part("files", part);
+                }
+            }
+        }
+
+        map.insert("name", "");
+        // TODO: temporarily uploading module metadata one by one.
+        // Need to upload all metadata at once, by list of module_name.
+        // BE and FE code need to be updated.
+        let module_name_iter = module_name_vec.iter();
+        for module_name in module_name_iter {
+            println!("module_name: {}", module_name);
+            *map.get_mut("name").unwrap() = module_name;
+
+            let res = client.post(metadata_api).json(&map).send().await;
+
+            match res {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        println!(
+                            "Your package has been successfully uploaded to {}.",
+                            response.text().await?
+                        );
+                    } else if response.status().is_client_error() {
+                        bail!("{}", response.text().await?)
+                    } else if response.status().is_server_error() {
+                        bail!("An unexpected error occurred. Please try again later");
+                    }
+                }
+                Err(_) => {
+                    bail!("An unexpected error occurred. Please try again later");
                 }
             }
         }
@@ -186,7 +202,11 @@ impl Upload {
         Ok(())
     }
 
-    fn read_file_and_module_name(filename: &mut String, path: &PathBuf) -> Result<String> {
+    fn read_file_and_module_name(
+        filename: &mut String,
+        module_name_vec: &mut Vec<String>,
+        path: &PathBuf,
+    ) -> Result<String> {
         let md_file = fs::read_to_string(path).expect("Unable to read md file");
         let lines = md_file.split("\n");
         // parse md_file to get module name.
@@ -200,6 +220,7 @@ impl Upload {
                         filename.push_str("+");
                         filename.push_str(module_name);
                         filename.push_str(".md");
+                        module_name_vec.push(module_name.to_string());
                     }
                 }
                 break;
