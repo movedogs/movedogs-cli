@@ -149,38 +149,33 @@ impl Upload {
             }
         }
 
-        map.insert("name", "");
-        // TODO: temporarily uploading module metadata one by one.
-        // Need to upload all metadata at once, by list of module_name.
-        // BE and FE code need to be updated.
-        let module_name_iter = module_name_vec.iter();
-        for module_name in module_name_iter {
-            println!("module_name: {}", module_name);
-            *map.get_mut("name").unwrap() = module_name;
+        let stringfied_module_name = serde_json::to_string(&module_name_vec).unwrap();
+        map.insert("moduleNames", stringfied_module_name.as_str());
 
-            let res = client.post(metadata_api).json(&map).send().await;
+        // upload metadata of Package
+        println!("uploading metadata...");
+        let res = client.post(metadata_api).json(&map).send().await;
 
-            match res {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        println!(
-                            "Your package has been successfully uploaded to {}.",
-                            response.text().await?
-                        );
-                    } else if response.status().is_client_error() {
-                        bail!("{}", response.text().await?)
-                    } else if response.status().is_server_error() {
-                        bail!("An unexpected error occurred. Please try again later");
-                    }
-                }
-                Err(_) => {
+        match res {
+            Ok(response) => {
+                if response.status().is_success() {
+                    println!(
+                        "Your package has been successfully uploaded to {}.",
+                        response.text().await?
+                    );
+                } else if response.status().is_client_error() {
+                    bail!("{}", response.text().await?)
+                } else if response.status().is_server_error() {
                     bail!("An unexpected error occurred. Please try again later");
                 }
             }
+            Err(_) => {
+                bail!("An unexpected error occurred. Please try again later");
+            }
         }
 
-        println!("content-type");
-
+        // upload md document files of Package
+        println!("uploading files...");
         let response = client.post(document_api).multipart(form).send().await;
         match response {
             Ok(response) => {
