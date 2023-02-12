@@ -17,7 +17,7 @@ impl Upload {
         println!("Upload");
         // let paste_api = "https://paste.rs";
         let document_api = "https://api.movedogs.org/document";
-        let metadata_api = "https://api.movedogs.org/module";
+        let metadata_api = "https://api.movedogs.org/package";
 
         let mut map = HashMap::new();
         let mut description = String::new();
